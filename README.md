@@ -26,6 +26,15 @@ claims the rules miss and classifies each as verifiable, needs-source,
 or opinion. Rules run first on purpose: no API key, no network, you
 still get the scan.
 
+## Live demo
+
+`index.html` is an offline, client-side paste-and-scan demo: open it
+directly (file:// works, no server, no network requests) and paste a
+draft or load the embedded sample. Its scanner rules are ported 1:1
+from `claimcheck.py` — same patterns, same order, same fenced-code
+skipping — verified to produce the identical 10 flags and verdict on
+the sample article. No Python/JavaScript divergences were needed.
+
 ## Design decisions
 
 - **Rules before model.** The mechanical pass is deterministic,

@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>claimcheck — pre-publish claim scanner</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #e6edf3;
+    --dim: #8b949e; --accent: #58a6ff; --bad: #f85149; --good: #3fb950;
+    --warn: #d29922;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 16px; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 1.35rem; margin: 0 0 6px; }
+  .pitch { color: var(--dim); font-size: 0.95rem; margin-bottom: 24px; }
+  textarea {
+    width: 100%; min-height: 260px; background: var(--panel); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 12px;
+    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.85rem; resize: vertical;
+  }
+  textarea:focus { outline: none; border-color: var(--accent); }
+  .controls { margin: 12px 0 24px; display: flex; gap: 10px; }
+  button {
+    background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 16px; font-size: 0.9rem; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: #1f6feb; border-color: #1f6feb; }
+  button.primary:hover { background: #388bfd; }
+  #summary { font-size: 0.9rem; color: var(--dim); margin-bottom: 12px; }
+  .flag {
+    border: 1px solid var(--border); border-left: 3px solid var(--warn);
+    border-radius: 6px; padding: 10px 14px; margin-bottom: 10px;
+    font-size: 0.86rem; background: var(--panel);
+  }
+  .flag .head { font-family: SFMono-Regular, Consolas, Menlo, monospace; margin-bottom: 4px; }
+  .flag .rule { color: var(--warn); }
+  .flag .match { color: var(--bad); }
+  .flag .ctx { color: var(--dim); font-family: SFMono-Regular, Consolas, Menlo, monospace;
+    white-space: pre-wrap; word-break: break-word; margin-bottom: 4px; }
+  .flag .why { color: var(--text); }
+  #verdict {
+    margin-top: 18px; padding: 12px 16px; border-radius: 6px; font-weight: 700;
+    font-family: SFMono-Regular, Consolas, Menlo, monospace; display: none;
+  }
+  #verdict.clean { display: block; background: #12261e; color: var(--good); border: 1px solid #238636; }
+  #verdict.review { display: block; background: #2d1a12; color: var(--warn); border: 1px solid #9e6a03; }
+  footer {
+    margin-top: 36px; padding-top: 14px; border-top: 1px solid var(--border);
+    color: var(--dim); font-size: 0.8rem;
+    font-family: SFMono-Regular, Consolas, Menlo, monospace;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>claimcheck</h1>
+  <div class="pitch">ctaio.dev preaches verifiable workflow details. This is the pre-publish gate that enforces them.</div>
+
+  <textarea id="draft" placeholder="Paste a markdown draft here, or load the sample." spellcheck="false"></textarea>
+  <div class="controls">
+    <button id="loadSample">Load sample</button>
+    <button id="scan" class="primary">Scan draft</button>
+  </div>
+
+  <div id="summary"></div>
+  <div id="results"></div>
+  <div id="verdict"></div>
+
+  <footer>github.com/avjcodes/claimcheck — rules ported 1:1 from claimcheck.py; scanning runs entirely in this page.</footer>
+</div>
+
+<script>
+// Rules ported 1:1 from claimcheck.py RULES. Same patterns, same order,
+// case-insensitive like the Python re.IGNORECASE scan. JS \b and Python \b
+// agree for these ASCII patterns, so no compatibility adjustments were needed.
+const RULES = [
+  ["number-claim", /\b\d[\d,.]*\s*(?:%|percent|x|times)\b/gi,
+   "Percentages and multipliers read as measured. Were they?"],
+  ["benchmark", /\b(?:benchmark|faster|slower|outperform\w*|beats?)\b/gi,
+   "Comparative performance claims need a test you can point to."],
+  ["count-claim", /\b\d[\d,]*\+?\s+(?:users?|companies|stars?|downloads?|contacts?|emails?|checks?|tests?)\b/gi,
+   "Concrete counts are the first thing a skeptical reader verifies."],
+  ["version-ref", /\b(?:v\d+[\w.\-]*|\d+\.\d+(?:\.\d+)?)\b/gi,
+   "Version references go stale; wrong ones break reader trust instantly."],
+  ["superlative", /\b(?:best|fastest|first|largest|leading|state[- ]of[- ]the[- ]art|(?:the\s+)?only\s+(?:way|tool|platform|solution|provider))\b/gi,
+   "Superlatives are claims about the whole market. Source or soften."],
+  ["date-claim", /\b(?:20\d{2}|last (?:week|month|year)|recently)\b/gi,
+   "Time anchors drift. 'Recently' in an evergreen article rots quietly."],
+  ["citation-stub", /\[(?:cite|source|todo|verify)\]|\bcitation needed\b/gi,
+   "The draft itself admits this is unverified."],
+  ["token-count", /\b\d[\d,]*\s*(?:more\s+)?tokens?\b/gi,
+   "Token numbers read as measured cost data. Cite the run or cut them."],
+];
+
+// sample-article.md, embedded so the page works offline with no fetch().
+const SAMPLE_LINES = [
+  "# Why agent teams ship faster than your senior engineers",
+  "",
+  "Agent teams are the fastest way to build software today. In a recent",
+  "head-to-head experiment, a Claude Code agent team finished a research task",
+  "8 minutes faster than the subagent approach, and it burned about 30,000",
+  "more tokens doing it.",
+  "",
+  "But speed hides a problem. The same team delivered a 50-contact lead list",
+  "with verified emails for only 8 of the 50 entries. Nobody checked. The",
+  "orchestrator got complacent and shipped it.",
+  "",
+  "We run the best agentic workflow in the industry. Our four-role crew passed",
+  "30 of 30 adversarial checks with zero fix rounds using Claude Code v2.1.",
+  "Most teams see 3x productivity gains after adopting it. [cite]",
+  "",
+  "```python",
+  "# code blocks should not be flagged: 99% of this is a demo",
+  "print(\"hello\")",
+  "```",
+  "",
+  "Recently, leading practitioners have said this approach outperforms",
+  "human-only teams."
+];
+const SAMPLE = SAMPLE_LINES.join("\n");
+
+// Mirrors rule_scan() in claimcheck.py: per-line, rules in order,
+// matches left-to-right, fenced code blocks toggled and skipped
+// (the fence lines themselves are skipped too, exactly like Python).
+function ruleScan(text) {
+  const flags = [];
+  let inCode = false;
+  const lines = text.split(/\r?\n/);
+  lines.forEach((line, idx) => {
+    const n = idx + 1;
+    if (line.trim().startsWith("```")) { inCode = !inCode; return; }
+    if (inCode) return;
+    for (const [label, pattern, why] of RULES) {
+      pattern.lastIndex = 0;
+      let m;
+      while ((m = pattern.exec(line)) !== null) {
+        flags.push({ line: n, rule: label, match: m[0],
+                     context: line.trim().slice(0, 120), why: why });
+        if (m.index === pattern.lastIndex) pattern.lastIndex++;
+      }
+    }
+  });
+  return flags;
+}
+
+function esc(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function render(flags) {
+  const results = document.getElementById("results");
+  const summary = document.getElementById("summary");
+  const verdict = document.getElementById("verdict");
+  summary.textContent = flags.length + " mechanical flag(s)";
+  results.innerHTML = flags.map(f => (
+    '<div class="flag">' +
+      '<div class="head">L' + f.line + '  <span class="rule">[' + esc(f.rule) + ']</span>  ' +
+      '<span class="match">"' + esc(f.match) + '"</span></div>' +
+      '<div class="ctx">' + esc(f.context) + '</div>' +
+      '<div class="why">' + esc(f.why) + '</div>' +
+    '</div>'
+  )).join("");
+  if (flags.length === 0) {
+    verdict.className = "clean";
+    verdict.textContent = "verdict: CLEAN";
+  } else {
+    verdict.className = "review";
+    verdict.textContent = "verdict: NEEDS EDITORIAL REVIEW";
+  }
+}
+
+document.getElementById("loadSample").addEventListener("click", () => {
+  document.getElementById("draft").value = SAMPLE;
+});
+document.getElementById("scan").addEventListener("click", () => {
+  render(ruleScan(document.getElementById("draft").value));
+});
+</script>
+</body>
+</html>
