@@ -46,7 +46,7 @@ overconfident draft:
 
 ```
 claimcheck report: sample-article.md
-13 mechanical flag(s)
+10 mechanical flag(s)
 ------------------------------------------------------------
 L   3  [superlative]  "fastest"
        Agent teams are the fastest way to build software today...
