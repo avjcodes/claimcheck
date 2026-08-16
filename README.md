@@ -1,5 +1,7 @@
 # claimcheck
 
+**Live demo: [avjcodes.github.io/claimcheck](https://avjcodes.github.io/claimcheck/)** — paste a draft, watch it get flagged. Runs entirely in your browser.
+
 Editorial QA for AI-assisted content. Scans a markdown article and flags
 every claim a skeptical reader would check: numbers, benchmarks, speed
 multipliers, version references, superlatives, time anchors, and the

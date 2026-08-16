@@ -34,7 +34,17 @@
   button:hover { border-color: var(--accent); }
   button.primary { background: #1f6feb; border-color: #1f6feb; }
   button.primary:hover { background: #388bfd; }
-  #summary { font-size: 0.9rem; color: var(--dim); margin-bottom: 12px; }
+  #summary { font-size: 0.9rem; color: var(--dim); margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .chip {
+    display: inline-block; padding: 1px 9px; border: 1px solid var(--border);
+    border-radius: 12px; background: var(--panel); color: var(--warn);
+    font-family: SFMono-Regular, Consolas, Menlo, monospace; font-size: 0.75rem;
+  }
+  .ctx mark {
+    background: #67060c; color: #ffdcd7; border-radius: 3px; padding: 0 3px;
+  }
+  .meta { color: var(--dim); font-size: 0.82rem; margin-bottom: 20px;
+    font-family: SFMono-Regular, Consolas, Menlo, monospace; }
   .flag {
     border: 1px solid var(--border); border-left: 3px solid var(--warn);
     border-radius: 6px; padding: 10px 14px; margin-bottom: 10px;
@@ -63,6 +73,7 @@
 <div class="wrap">
   <h1>claimcheck</h1>
   <div class="pitch">ctaio.dev preaches verifiable workflow details. This is the pre-publish gate that enforces them.</div>
+  <div class="meta">8 rules · runs entirely in this page · engine source: claimcheck.py (rules ported 1:1)</div>
 
   <textarea id="draft" placeholder="Paste a markdown draft here, or load the sample." spellcheck="false"></textarea>
   <div class="controls">
@@ -159,15 +170,22 @@ function render(flags) {
   const results = document.getElementById("results");
   const summary = document.getElementById("summary");
   const verdict = document.getElementById("verdict");
-  summary.textContent = flags.length + " mechanical flag(s)";
-  results.innerHTML = flags.map(f => (
-    '<div class="flag">' +
+  const counts = {};
+  flags.forEach(f => { counts[f.rule] = (counts[f.rule] || 0) + 1; });
+  summary.innerHTML = flags.length + " mechanical flag(s)" +
+    Object.entries(counts).map(([r, c]) =>
+      '<span class="chip">' + esc(r) + " ×" + c + "</span>").join("");
+  results.innerHTML = flags.map(f => {
+    const ctx = esc(f.context);
+    const em = esc(f.match);
+    const shown = ctx.replace(em, "<mark>" + em + "</mark>");
+    return '<div class="flag">' +
       '<div class="head">L' + f.line + '  <span class="rule">[' + esc(f.rule) + ']</span>  ' +
-      '<span class="match">"' + esc(f.match) + '"</span></div>' +
-      '<div class="ctx">' + esc(f.context) + '</div>' +
+      '<span class="match">"' + em + '"</span></div>' +
+      '<div class="ctx">' + shown + '</div>' +
       '<div class="why">' + esc(f.why) + '</div>' +
-    '</div>'
-  )).join("");
+    '</div>';
+  }).join("");
   if (flags.length === 0) {
     verdict.className = "clean";
     verdict.textContent = "verdict: CLEAN";
